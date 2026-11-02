@@ -114,6 +114,22 @@
     letter-spacing: 0.04em; text-transform: uppercase;
     transition: opacity 0.2s;
   }
+  #gesture-hint {
+    font-size: 0.7rem; color: var(--text-dim);
+    text-align: center; padding: 0;
+    min-height: 1.2em;
+    transition: opacity 0.2s;
+  }
+  #debug-info {
+    position: absolute; bottom: 8px; left: 8px;
+    font-size: 0.55rem; font-weight: 700;
+    padding: 3px 8px;
+    background: rgba(0,0,0,0.6); color: var(--accent);
+    border-radius: 6px;
+    letter-spacing: 0.03em;
+    backdrop-filter: blur(4px);
+    z-index: 5; font-family: 'Space Mono', monospace;
+  }
 
   /* Main panels */
   #main {
@@ -226,6 +242,7 @@
     <h1>Gesture Meme</h1>
     <div id="gesture-badge">idle</div>
   </div>
+  <div id="gesture-hint"></div>
   <div id="main">
     <div id="meme-panel">
       <img id="meme-img" alt="meme" />
@@ -234,6 +251,7 @@
       <video id="webcam" autoplay playsinline muted></video>
       <canvas id="draw-canvas"></canvas>
       <div id="cam-label">live</div>
+      <div id="debug-info"></div>
     </div>
   </div>
   <div id="thumbs"></div>
@@ -250,16 +268,16 @@
 
   /* ── Config ── */
   const MEMES = [
-    { id:'bicep',    label:'Bicep 💪',     img:'images/bicep.jpg' },
-    { id:'thumbsup', label:'Thumbs Up 👍', img:'images/thumbsup.jpg' },
-    { id:'middle',   label:'Middle 🖕',    img:'images/middlefinger.jpg' },
-    { id:'shocked',  label:'Shocked 😱',   img:'images/shocked.jpg' },
-    { id:'prayer',   label:'Prayer 🙏',    img:'images/prayer.jpg' },
-    { id:'tongue',   label:'Tongue 😛',    img:'images/tongue.jpg' },
-    { id:'scream',   label:'Scream 😲',    img:'images/scream.jpg' },
-    { id:'shh',      label:'Shh 🤫',       img:'images/shh.jpg' },
-    { id:'peace',    label:'Peace ✌️',     img:'images/peace.jpg' },
-    { id:'idle',     label:'Idle',          img:'images/idle.jpg' },
+    { id:'bicep',    label:'Bicep 💪',     img:'images/bicep.jpg',   hint:'Покажи кулак' },
+    { id:'thumbsup', label:'Thumbs Up 👍', img:'images/thumbsup.jpg', hint:'Большой палец вверх' },
+    { id:'middle',   label:'Middle 🖕',    img:'images/middlefinger.jpg', hint:'Средний палец' },
+    { id:'shocked',  label:'Shocked 😱',   img:'images/shocked.jpg', hint:'Две руки вверх, пальцы растопырь' },
+    { id:'prayer',   label:'Prayer 🙏',    img:'images/prayer.jpg',  hint:'Сложи руки вместе' },
+    { id:'tongue',   label:'Tongue 😛',    img:'images/tongue.jpg',  hint:'Приоткрой рот немного' },
+    { id:'scream',   label:'Scream 😲',    img:'images/scream.jpg',  hint:'Широко открой рот' },
+    { id:'shh',      label:'Shh 🤫',       img:'images/shh.jpg',     hint:'Указательный палец ко рту' },
+    { id:'peace',    label:'Peace ✌️',     img:'images/peace.jpg',   hint:'Пис двумя руками' },
+    { id:'idle',     label:'Idle',          img:'images/idle.jpg',    hint:'' },
   ];
 
   const HOLD_MS = 250;       // debounce ms before switching gesture
@@ -275,6 +293,8 @@
   const $memeImg  = document.getElementById('meme-img');
   const $badge    = document.getElementById('gesture-badge');
   const $thumbs   = document.getElementById('thumbs');
+  const $hint     = document.getElementById('gesture-hint');
+  const $debug    = document.getElementById('debug-info');
   const $video    = document.getElementById('webcam');
   const $canvas   = document.getElementById('draw-canvas');
   const ctx       = $canvas.getContext('2d');
@@ -321,6 +341,7 @@
       $memeImg.style.opacity = '1';
     }, 120);
     $badge.textContent = m.label;
+    $hint.textContent = m.hint || '';
     document.querySelectorAll('.tb').forEach(b => {
       b.classList.toggle('active', b.dataset.id === id);
     });
@@ -398,28 +419,29 @@
       const [a, b] = hs;
       const cd = dist(a.c, b.c);
 
-      // Prayer: hands close together, fingers somewhat extended
-      if (cd < 0.22) {
+      // Prayer: hands close together
+      if (cd < 0.30) {
         return 'prayer';
-      }
-
-      // Shocked: both hands high, most fingers spread
-      if (a.c.y < 0.5 && b.c.y < 0.5 &&
-          (a.f.index && a.f.middle) &&
-          (b.f.index && b.f.middle)) {
-        if (mouth > 0.2) return 'shocked';
-        return 'shocked';
-      }
-
-      // Peace (both hands): index+middle extended on both
-      if (a.f.index && a.f.middle && b.f.index && b.f.middle) {
-        return 'peace';
       }
 
       // Middle finger (both hands)
       if (!a.f.index && a.f.middle && !a.f.ring &&
           !b.f.index && b.f.middle && !b.f.ring) {
         return 'middle';
+      }
+
+      // Peace (both hands): index+middle extended on both
+      if (a.f.index && a.f.middle && b.f.index && b.f.middle) {
+        // If hands are high and spread — shocked
+        if (a.c.y < 0.55 && b.c.y < 0.55 && cd > 0.35) {
+          return 'shocked';
+        }
+        return 'peace';
+      }
+
+      // Shocked: both hands high, fingers spread wide apart
+      if (cd > 0.3 && a.c.y < 0.55 && b.c.y < 0.55) {
+        return 'shocked';
       }
     }
 
@@ -445,10 +467,7 @@
           }
         }
 
-        // Shaka (thumb+pinky = tongue trigger) 🤙
-        if (f.thumb && !f.index && !f.middle && !f.ring && f.pinky) {
-          return 'tongue';
-        }
+
       }
 
       for (const h of hs) {
@@ -479,15 +498,16 @@
           if (h.c.y < 0.55) return 'shocked';
         }
 
-        // Fist raised = bicep
-        if (!f.index && !f.middle && !f.ring && !f.pinky) {
-          if (h.c.y < 0.5) return 'bicep';
+        // Fist = bicep (anywhere, not just raised)
+        if (!f.index && !f.middle && !f.ring && !f.pinky && !f.thumb) {
+          return 'bicep';
         }
       }
     }
 
-    /* Face-only gestures */
-    if (mouth > 0.28) return 'scream';
+    /* Face-only gestures — two levels of mouth opening */
+    if (mouth > 0.25) return 'scream';    // wide open = scream
+    if (mouth > 0.12) return 'tongue';    // slightly open = tongue
 
     return 'idle';
   }
@@ -522,8 +542,17 @@
   function update() {
     if (manualOverride) { requestAnimationFrame(update); return; }
 
+    const hs_ref = latestHands && latestHands.multiHandLandmarks ? latestHands.multiHandLandmarks.length : 0;
+    const mouth_ref = mouthOpenRatio(latestFace ? latestFace.multiFaceLandmarks : null);
     const g = classify();
     const now = performance.now();
+    // expose for debug
+    var hs = [], mouth = mouth_ref;
+    if (latestHands && latestHands.multiHandLandmarks) {
+      for (const lm of latestHands.multiHandLandmarks) {
+        hs.push({ f: fingers(lm), c: handCenter(lm) });
+      }
+    }
 
     if (g !== pendingGesture) {
       pendingGesture = g;
@@ -533,6 +562,13 @@
     if (g === pendingGesture && now - pendingStart > HOLD_MS) {
       showMeme(g);
     }
+
+    // Debug: show detected state
+    const debugParts = [];
+    if (hs.length) debugParts.push('hands: ' + hs.length);
+    if (mouth > 0.05) debugParts.push('mouth: ' + mouth.toFixed(2));
+    debugParts.push('→ ' + g);
+    $debug.textContent = debugParts.join(' | ');
 
     drawHands();
     requestAnimationFrame(update);
