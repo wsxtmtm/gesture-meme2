@@ -347,34 +347,47 @@
     });
   }
 
-  /* ── Helpers ── */
+  /* ── Helpers (rotation-invariant) ── */
   function dist(a, b) {
     return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
   }
 
-  function isExtended(lm, tip, pip) {
-    // more tolerant: tip clearly above pip
-    return lm[tip].y < lm[pip].y - 0.01;
+  // Finger extended = tip is farther from MCP than PIP is (works at any angle)
+  function isExtended(lm, tip, pip, mcp) {
+    const tipDist = dist(lm[tip], lm[mcp]);
+    const pipDist = dist(lm[pip], lm[mcp]);
+    return tipDist > pipDist * 1.05;
+  }
+
+  function isClosed(lm, tip, pip, mcp) {
+    const tipDist = dist(lm[tip], lm[mcp]);
+    const pipDist = dist(lm[pip], lm[mcp]);
+    return tipDist < pipDist * 1.1;
   }
 
   function isThumbOut(lm) {
-    // thumb tip further from index MCP than thumb IP is
-    const tipD = dist(lm[4], lm[5]);
-    const ipD  = dist(lm[3], lm[5]);
-    return tipD > ipD * 1.05;
+    // thumb tip farther from wrist than thumb IP
+    const tipD = dist(lm[4], lm[0]);
+    const ipD  = dist(lm[3], lm[0]);
+    // also check vs index MCP
+    const tipD2 = dist(lm[4], lm[5]);
+    const ipD2  = dist(lm[3], lm[5]);
+    return (tipD > ipD * 1.05) || (tipD2 > ipD2 * 1.05);
   }
 
-  function isClosed(lm, tip, pip) {
-    return lm[tip].y > lm[pip].y + 0.02;
+  function isThumbClosed(lm) {
+    const tipD = dist(lm[4], lm[0]);
+    const ipD  = dist(lm[3], lm[0]);
+    return tipD < ipD * 1.15;
   }
 
   function fingers(lm) {
     return {
       thumb:  isThumbOut(lm),
-      index:  isExtended(lm, 8, 6),
-      middle: isExtended(lm, 12, 10),
-      ring:   isExtended(lm, 16, 14),
-      pinky:  isExtended(lm, 20, 18),
+      index:  isExtended(lm, 8, 6, 5),
+      middle: isExtended(lm, 12, 10, 9),
+      ring:   isExtended(lm, 16, 14, 13),
+      pinky:  isExtended(lm, 20, 18, 17),
     };
   }
 
@@ -563,9 +576,14 @@
       showMeme(g);
     }
 
-    // Debug: show detected state
+    // Debug: show detected state with finger details
     const debugParts = [];
-    if (hs.length) debugParts.push('hands: ' + hs.length);
+    if (hs.length) {
+      debugParts.push('hands: ' + hs.length);
+      const f0 = hs[0].f;
+      const fd = (f0.thumb?'T':'_') + (f0.index?'I':'_') + (f0.middle?'M':'_') + (f0.ring?'R':'_') + (f0.pinky?'P':'_');
+      debugParts.push('[' + fd + ']');
+    }
     if (mouth > 0.05) debugParts.push('mouth: ' + mouth.toFixed(2));
     debugParts.push('→ ' + g);
     $debug.textContent = debugParts.join(' | ');
